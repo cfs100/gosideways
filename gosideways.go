@@ -86,23 +86,22 @@ func (n *Node) newData(key string, data string, valid time.Duration) Data {
 }
 
 func (n *Node) replicate(d Data) {
-	for _, sibling := range n.Siblings {
-		if sibling.Addr == n.Addr && sibling.Port == n.Port {
+	for _, s := range n.Siblings {
+		if s.Addr == n.Addr && s.Port == n.Port {
 			continue
 		}
 
-		go func(addr string, port int, d Data) {
-			conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", addr, port))
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
+		addr := fmt.Sprintf("%s:%d", s.Addr, s.Port)
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
 
-			exp := int(d.Expires.Sub(time.Now()).Seconds() + .5)
+		exp := int(d.Expires.Sub(time.Now()).Seconds() + .5)
 
-			fmt.Fprintf(conn, "REPLICATE %s %d %s", d.Key, exp, d.Text)
-			conn.Close()
-		}(sibling.Addr, sibling.Port, d)
+		fmt.Fprintf(conn, "REPLICATE %s %d %s", d.Key, exp, d.Text)
+		conn.Close()
 	}
 }
 
@@ -146,8 +145,8 @@ func newNode(addr string, port int) *Node {
 		Data:     make(map[string]Data),
 		Siblings: make(map[string]*Node),
 
-		save: make(chan Data),
-		repl: make(chan Data),
+		save: make(chan Data, 1024),
+		repl: make(chan Data, 1024),
 	}
 
 	go func() {
