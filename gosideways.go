@@ -2,6 +2,7 @@ package gosideways
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,9 +12,10 @@ import (
 )
 
 type Node struct {
-	Addr string
-	Port int
-	Data map[string]Data
+	Addr     string
+	Port     int
+	Data     map[string]Data
+	Siblings map[string]*Node
 }
 
 type Data struct {
@@ -21,6 +23,17 @@ type Data struct {
 	Text    string
 	Date    time.Time
 	Expires time.Time
+}
+
+func (n *Node) AddSibling(addr string, port int) error {
+	key := addr + ":" + fmt.Sprint(port)
+	if _, exists := n.Siblings[key]; exists {
+		return errors.New("Sibling " + key + " already registered")
+	}
+
+	n.Siblings[key] = newNode(addr, port)
+
+	return nil
 }
 
 func Listen(port int) *Node {
@@ -55,6 +68,32 @@ func (n *Node) set(key string, data string, exp time.Duration) {
 		Text:    data,
 		Date:    time.Now(),
 		Expires: time.Now().Add(exp),
+	}
+}
+
+func (n *Node) replicate(key string) {
+	d := n.get(key)
+	if d == nil {
+		return
+	}
+
+	for _, sibling := range n.Siblings {
+		if sibling.Addr == n.Addr && sibling.Port == n.Port {
+			continue
+		}
+
+		go func(addr string, port int, d *Data) {
+			conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", addr, port))
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+
+			exp := int(d.Expires.Sub(time.Now()).Seconds() + .5)
+
+			fmt.Fprintf(conn, "REPLICATE %s %d %s", d.Key, exp, d.Text)
+			conn.Close()
+		}(sibling.Addr, sibling.Port, d)
 	}
 }
 
@@ -93,9 +132,10 @@ func (n *Node) clean() {
 
 func newNode(addr string, port int) *Node {
 	return &Node{
-		Addr: addr,
-		Port: port,
-		Data: make(map[string]Data),
+		Addr:     addr,
+		Port:     port,
+		Data:     make(map[string]Data),
+		Siblings: make(map[string]*Node),
 	}
 }
 
@@ -126,7 +166,7 @@ func (n *Node) handleConnection(c net.Conn) {
 				fmt.Fprintln(c, data.Text)
 			}
 			break
-		case "SET":
+		case "SET", "REPLICATE":
 			if len(command) < 3 {
 				continue
 			}
@@ -142,6 +182,10 @@ func (n *Node) handleConnection(c net.Conn) {
 			}
 
 			n.set(command[1], aux[1], time.Duration(seconds)*time.Second)
+
+			if command[0] == "SET" {
+				n.replicate(command[1])
+			}
 			break
 		case "DELETE":
 			n.del(command[1])
