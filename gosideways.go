@@ -16,6 +16,9 @@ type Node struct {
 	Port     int
 	Data     map[string]Data
 	Siblings map[string]*Node
+
+	save chan Data
+	repl chan Data
 }
 
 type Data struct {
@@ -67,12 +70,14 @@ func (n *Node) Get(key string) *Data {
 }
 
 func (n *Node) Set(key string, data string, valid time.Duration) {
-	n.set(key, data, valid)
-	n.replicate(key)
+	d := n.newData(key, data, valid)
+
+	n.save <- d
+	n.repl <- d
 }
 
-func (n *Node) set(key string, data string, valid time.Duration) {
-	n.Data[key] = Data{
+func (n *Node) newData(key string, data string, valid time.Duration) Data {
+	return Data{
 		Key:     key,
 		Text:    data,
 		Date:    time.Now(),
@@ -80,18 +85,13 @@ func (n *Node) set(key string, data string, valid time.Duration) {
 	}
 }
 
-func (n *Node) replicate(key string) {
-	d := n.get(key)
-	if d == nil {
-		return
-	}
-
+func (n *Node) replicate(d Data) {
 	for _, sibling := range n.Siblings {
 		if sibling.Addr == n.Addr && sibling.Port == n.Port {
 			continue
 		}
 
-		go func(addr string, port int, d *Data) {
+		go func(addr string, port int, d Data) {
 			conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", addr, port))
 			if err != nil {
 				log.Println(err.Error())
@@ -140,12 +140,29 @@ func (n *Node) clean() {
 }
 
 func newNode(addr string, port int) *Node {
-	return &Node{
+	node := &Node{
 		Addr:     addr,
 		Port:     port,
 		Data:     make(map[string]Data),
 		Siblings: make(map[string]*Node),
+
+		save: make(chan Data),
+		repl: make(chan Data),
 	}
+
+	go func() {
+		for d := range node.save {
+			node.Data[d.Key] = d
+		}
+	}()
+
+	go func() {
+		for d := range node.repl {
+			node.replicate(d)
+		}
+	}()
+
+	return node
 }
 
 func (n *Node) handleConnection(c net.Conn) {
@@ -190,10 +207,12 @@ func (n *Node) handleConnection(c net.Conn) {
 				continue
 			}
 
-			n.set(command[1], aux[1], time.Duration(seconds)*time.Second)
+			d := n.newData(command[1], aux[1], time.Duration(seconds)*time.Second)
+
+			n.save <- d
 
 			if command[0] == "SET" {
-				n.replicate(command[1])
+				n.repl <- d
 			}
 			break
 		case "DELETE":
