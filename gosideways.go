@@ -62,12 +62,21 @@ func (n *Node) Run() {
 	}
 }
 
-func (n *Node) set(key string, data string, exp time.Duration) {
+func (n *Node) Get(key string) *Data {
+	return n.get(key)
+}
+
+func (n *Node) Set(key string, data string, valid time.Duration) {
+	n.set(key, data, valid)
+	n.replicate(key)
+}
+
+func (n *Node) set(key string, data string, valid time.Duration) {
 	n.Data[key] = Data{
 		Key:     key,
 		Text:    data,
 		Date:    time.Now(),
-		Expires: time.Now().Add(exp),
+		Expires: time.Now().Add(valid),
 	}
 }
 
