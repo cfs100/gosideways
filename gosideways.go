@@ -100,7 +100,7 @@ func (n *Node) replicate(d Data) {
 
 		exp := int(d.Expires.Sub(time.Now()).Seconds() + .5)
 
-		fmt.Fprintf(conn, "REPLICATE %s %d %s", d.Key, exp, d.Text)
+		fmt.Fprintf(conn, "REPLICATE %s %d %d %s", d.Key, exp, len(d.Text), d.Text)
 		conn.Close()
 	}
 }
@@ -196,8 +196,8 @@ func (n *Node) handleConnection(c net.Conn) {
 				continue
 			}
 
-			aux := strings.SplitN(command[2], " ", 2)
-			if len(aux) < 2 {
+			aux := strings.SplitN(command[2], " ", 3)
+			if len(aux) < 3 {
 				continue
 			}
 
@@ -206,7 +206,17 @@ func (n *Node) handleConnection(c net.Conn) {
 				continue
 			}
 
-			d := n.newData(command[1], aux[1], time.Duration(seconds)*time.Second)
+			length, _ := strconv.Atoi(aux[1])
+			if length <= 0 {
+				continue
+			}
+
+			d := n.newData(command[1], aux[2], time.Duration(seconds)*time.Second)
+
+			for len(d.Text) < length {
+				scanner.Scan()
+				d.Text += "\n" + scanner.Text()
+			}
 
 			n.save <- d
 
