@@ -42,7 +42,7 @@ func (n *Node) AddSibling(addr string, port int) error {
 func Listen(port int) *Node {
 	node := newNode("127.0.0.1", port)
 	go node.clean()
-	go node.Run()
+	go node.run()
 
 	go func() {
 		for d := range node.save {
@@ -59,7 +59,7 @@ func Listen(port int) *Node {
 	return node
 }
 
-func (n *Node) Run() {
+func (n *Node) run() {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", n.Port))
 	if err != nil {
 		log.Println(err.Error())
