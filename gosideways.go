@@ -59,13 +59,6 @@ func Listen(port int) *Node {
 		}
 	}()
 
-	dump := time.Tick(time.Minute)
-	go func() {
-		for _ = range dump {
-			node.dump()
-		}
-	}()
-
 	node.load()
 
 	return node
@@ -151,6 +144,7 @@ func (n *Node) del(key string) {
 }
 
 func (n *Node) clean() {
+	const seconds = 5
 	for {
 		now := time.Now()
 		for key, data := range n.Data {
@@ -159,7 +153,11 @@ func (n *Node) clean() {
 			}
 		}
 
-		time.Sleep(time.Second)
+		if now.Minute()%seconds == 0 && now.Second() < seconds {
+			n.dump()
+		}
+
+		time.Sleep(seconds * time.Second)
 	}
 }
 
