@@ -2,10 +2,13 @@ package gosideways
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -22,10 +25,10 @@ type Node struct {
 }
 
 type Data struct {
-	Key     string
-	Text    string
-	Date    time.Time
-	Expires time.Time
+	Key     string    `json:"key"`
+	Text    string    `json:"text"`
+	Date    time.Time `json:"date"`
+	Expires time.Time `json:"expires"`
 }
 
 func (n *Node) AddSibling(addr string, port int) error {
@@ -55,6 +58,15 @@ func Listen(port int) *Node {
 			node.replicate(d)
 		}
 	}()
+
+	dump := time.Tick(time.Minute)
+	go func() {
+		for _ = range dump {
+			node.dump()
+		}
+	}()
+
+	node.load()
 
 	return node
 }
@@ -149,6 +161,33 @@ func (n *Node) clean() {
 
 		time.Sleep(time.Second)
 	}
+}
+
+func (n Node) dump() error {
+	data, err := json.Marshal(n.Data)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(n.getFilename(), data, 0600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (n *Node) load() {
+	data, _ := ioutil.ReadFile(n.getFilename())
+	if len(data) <= 2 {
+		return
+	}
+
+	json.Unmarshal(data, &n.Data)
+}
+
+func (n Node) getFilename() string {
+	return fmt.Sprintf("%s/gosideways-%s-%d.json", os.TempDir(), n.Addr, n.Port)
 }
 
 func newNode(addr string, port int) *Node {
