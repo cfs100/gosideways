@@ -43,6 +43,19 @@ func Listen(port int) *Node {
 	node := newNode("127.0.0.1", port)
 	go node.clean()
 	go node.Run()
+
+	go func() {
+		for d := range node.save {
+			node.Data[d.Key] = d
+		}
+	}()
+
+	go func() {
+		for d := range node.repl {
+			node.replicate(d)
+		}
+	}()
+
 	return node
 }
 
@@ -139,7 +152,7 @@ func (n *Node) clean() {
 }
 
 func newNode(addr string, port int) *Node {
-	node := &Node{
+	return &Node{
 		Addr:     addr,
 		Port:     port,
 		Data:     make(map[string]Data),
@@ -148,20 +161,6 @@ func newNode(addr string, port int) *Node {
 		save: make(chan Data, 1024),
 		repl: make(chan Data, 1024),
 	}
-
-	go func() {
-		for d := range node.save {
-			node.Data[d.Key] = d
-		}
-	}()
-
-	go func() {
-		for d := range node.repl {
-			node.replicate(d)
-		}
-	}()
-
-	return node
 }
 
 func (n *Node) handleConnection(c net.Conn) {
