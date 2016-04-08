@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var EnableDump = false
+
 type Node struct {
 	Addr     string
 	Port     int
@@ -153,7 +155,7 @@ func (n *Node) clean() {
 			}
 		}
 
-		if now.Minute()%seconds == 0 && now.Second() < seconds {
+		if EnableDump && now.Minute()%seconds == 0 && now.Second() < seconds {
 			n.dump()
 		}
 
